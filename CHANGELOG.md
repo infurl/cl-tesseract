@@ -31,16 +31,13 @@ technical account; summary:
   it via `TessDeleteText`. Fixed and honestly measured — found to be
   dwarfed by unrelated per-call `TessBaseAPI`-recreation overhead
   inherent to this library's design, not overclaimed as a dramatic win.
-* Fixed the actual reason the library failed to load at all on this
-  container: `*tessdata-directory*` never probed Debian/Ubuntu's apt
-  layout, and the foreign-library search list relied on an unversioned
-  `.so` symlink only the `-dev` package provides.
-* Restructured as a git submodule of the containing `common-lisp/`
-  workspace repo, rather than an untracked nested checkout.
+* Fixed the actual reason the library failed to load at all on Debian/
+  Ubuntu: `*tessdata-directory*` never probed its apt layout, and the
+  foreign-library search list relied on an unversioned `.so` symlink
+  only the `-dev` package provides.
 * Added this CHANGELOG.md, plus a MAINTENANCE.md split out from
-  README.md per this workspace's documentation policy (agent/developer/
-  maintainer-oriented content in MAINTENANCE.md, strictly user-facing
-  content in README.md).
+  README.md: agent/developer/maintainer-oriented content in
+  MAINTENANCE.md, strictly user-facing content in README.md.
 
 ## Prior history (2015–2025)
 

@@ -15,20 +15,12 @@ namestring fix and an SBCL float-trap workaround followed the same year
 and in 2017; a Homebrew-on-Apple-Silicon path was merged 2025-01-09 (PR
 from `lispnik`) — otherwise untouched between 2017-11-12 and that merge.
 
-Forked to `infurl/cl-tesseract` (Andrew Smith) and added to this
-workspace 2026-07-26 as a git **submodule** of `common-lisp/` (real git
-history preserved via `git submodule add`, not a vendor-copy-in like
-[galar](/workspace/okf/tooling/galar.md)'s). Andrew had just added the
-`tesseract-ocr`/`libtesseract-dev` 5.5.0 packages to this container and
-asked for the bindings — frozen at 3.04-era conventions for over a
-decade — to be brought up to date against them.
+Forked to `infurl/cl-tesseract`, then modernized 2026-07-26 against a
+real Tesseract 5.5.0 + `libtesseract-dev` installation after being
+frozen at 3.04-era conventions for over a decade.
 
-**The 2026-07-26 modernization pass** (commit `03ceed8`) is the bulk of
-what this document covers below. Full technical rationale for each
-individual binding change also lives in that commit's own message; this
-document restates and organizes it for a maintainer who hasn't read the
-commit, and adds the parts that don't fit a commit message (the
-Reference table, the RSS measurement methodology, open scope).
+**The 2026-07-26 modernization pass** is the bulk of what this document
+covers below.
 
 ## Architecture
 
@@ -156,9 +148,8 @@ contract** — it's a real leak that would matter at larger buffer sizes
 or over a long enough run — but this measurement doesn't demonstrate a
 dramatic win, and the README says so rather than overclaiming one.
 
-**Two container-portability fixes, the actual reason the library failed
-to load at all before this pass** (on this Debian container
-specifically, likely on most non-macOS Linux installs generally):
+**Two portability fixes, the actual reason the library failed to load
+at all on Debian/Ubuntu before this pass:**
 - `*tessdata-directory*`'s probing only ever checked macOS/Homebrew
   paths (`/usr/local/share/tessdata`, `/opt/homebrew/share/tessdata`)
   plus a generic `/usr/local/tessdata` — none of which exist on Debian/
@@ -168,7 +159,7 @@ specifically, likely on most non-macOS Linux installs generally):
   `(namestring nil)` when nothing matched, this was a hard load-time
   error (`The value NIL is not of type (OR STRING PATHNAME ...)`), not
   a soft misconfiguration — confirmed directly by trying to load the
-  original bindings unmodified against this container before making any
+  original bindings unmodified on a Debian install before making any
   changes. Fixed with `find-tessdata-directory`, which globs
   `/usr/share/tesseract-ocr/*/tessdata/` (tolerant of future Tesseract
   major-version bumps) before falling back through the original paths;
@@ -205,15 +196,13 @@ the header's own section structure.
 ## Known gotchas / open scope
 
 - **No test suite.** Verification for the 2026-07-26 pass was manual:
-  a synthetic PIL-generated test image, run through all five
-  `image-to-*` functions plus the RSS-measurement scripts described
-  above, all in throwaway `sbcl --script` processes rather than this
-  workspace's persistent sbcl-bridge (per the standing policy of never
-  experimenting against a pinned production core). Nothing here is
-  wired into an ASDF `:test-op` or run automatically.
+  a synthetic test image, run through all five `image-to-*` functions
+  plus the RSS-measurement scripts described above, all in throwaway
+  `sbcl --script` processes. Nothing here is wired into an ASDF
+  `:test-op` or run automatically.
 - **CCL untested.** The original project claimed CCL support; that
-  claim predates this update, and this container has no CCL installed
-  to verify it against Tesseract 5.5 either way.
+  claim predates this update and has not been re-verified against
+  Tesseract 5.5.
 - **Progress-monitor, `Init5`, `DetectOrientationScript`, `GetGradient`,
   and the LSTM/word-str-box renderers are bound in `capi.lisp` but have
   no convenience wrapper** — a caller needs `cl-tesseract::` package
@@ -228,13 +217,6 @@ the header's own section structure.
   from keeping one `TessBaseAPI` alive across calls (via `with-base-api`/
   `init-tess-api`/`process-pages` directly, bypassing `image-to-*`) than
   from the memory-leak fix above, per the RSS measurement above.
-- **Submodule not yet pushed.** This repo is tracked as a git submodule
-  of `common-lisp/` pinned to commit `03ceed8`. That commit currently
-  only exists in the local checkout — it has not been pushed to
-  `github.com/infurl/cl-tesseract` yet, so a fresh clone of `common-lisp`
-  elsewhere cannot resolve the submodule reference until that push
-  happens (confirmed directly via a fresh-clone test). Not a code issue,
-  just a publishing step still pending.
 
 ## Dependencies
 
@@ -246,5 +228,5 @@ the header's own section structure.
 
 ## Consumers
 
-None yet in this workspace — added and modernized standalone, ahead of
-any concrete consumer.
+None yet — added and modernized standalone, ahead of any concrete
+consumer.

@@ -17,11 +17,11 @@ scope.
 >
 > This is a fork of an existing open-source project, originally written
 > by Edward Geist ([GOFAI/cl-tesseract](https://github.com/GOFAI/cl-tesseract),
-> 2015) and maintained since by Andrew Smith.
+> 2015).
 >
 > The 2026-07-26 update — bringing the bindings up to date against
-> Tesseract 5.5.0 — was carried out in close collaboration between
-> Andrew and Claude Sonnet 5 (Anthropic).
+> Tesseract 5.5.0 — was carried out through close collaboration between
+> an experienced human programmer and Claude Sonnet 5 (Anthropic).
 >
 > It is published openly for community scrutiny and iteration.
 
