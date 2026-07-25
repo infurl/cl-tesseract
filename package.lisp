@@ -10,5 +10,8 @@
    #:init-tess-api
    #:process-pages
    #:image-to-text
-   #:image-to-hocr))
+   #:image-to-hocr
+   #:image-to-tsv
+   #:image-to-alto
+   #:image-to-page))
 

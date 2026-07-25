@@ -1,14 +1,21 @@
-CL-TESSERACT is a set of CFFI bindings for the Tesseract OCR library v. 3.04: 
-https://github.com/tesseract-ocr/tesseract
+CL-TESSERACT is a set of CFFI bindings for the Tesseract OCR library, updated 2026-07-26
+against v. 5.5.0: https://github.com/tesseract-ocr/tesseract
 
 On OS X, Tesseract can be conveniently installed using Homebrew:
 brew install tesseract
 
-As Tesseract OCR’s capi changed in the update to v. 3.04, earlier versions such as 3.02
-will not work with these bindings.
+On Debian/Ubuntu:
+apt install tesseract-ocr libtesseract-dev
 
-CL-TESSERACT also provides convenient lisp functions to retrieve text from images, 
-IMAGE-TO-TEXT and IMAGE-TO-HOCR.
+Tesseract OCR's capi last changed incompatibly in the update to v. 3.04 (earlier versions
+such as 3.02 will not work with these bindings) and has evolved compatibly since -- most
+notably, Tesseract dropped the old Cube OCR engine for an LSTM-based one between 3.04 and
+4.x, and added TSV/ALTO/PAGE-XML output and a real progress-monitor/cancellation API since.
+These bindings were re-verified end-to-end against a real 5.5.0 install as part of the
+2026-07-26 update; see cl-tesseract.lisp and capi.lisp for the details of what changed.
+
+CL-TESSERACT also provides convenient lisp functions to retrieve text from images:
+IMAGE-TO-TEXT, IMAGE-TO-HOCR, IMAGE-TO-TSV, IMAGE-TO-ALTO, and IMAGE-TO-PAGE.
 
 IMAGE-TO-TEXT accepts a lisp pathname and an optional language parameter and returns a 
 unicode string:
@@ -45,8 +52,11 @@ salta sobre 0 C50 preguieoso.
 
 "
 
-Available languages are dependent on the Tesseract OCR .traineddata files located in the directory denoted by *TESSDATA-DIRECTORY*. CL-TESSERACT attempts to set this variable to 
-a reasonable default for your platform.
+Available languages are dependent on the Tesseract OCR .traineddata files located in the directory denoted by *TESSDATA-DIRECTORY*. CL-TESSERACT attempts to set this variable to
+a reasonable default for your platform, including Debian/Ubuntu's apt layout (which nests
+it under a Tesseract-major-version directory, e.g. /usr/share/tesseract-ocr/5/tessdata) as
+well as the macOS Homebrew locations. If none of the known locations exist, *TESSDATA-
+DIRECTORY* is NIL and must be set explicitly before use.
 
 IMAGE-TO-HOCR accepts a lisp pathname, the optional language parameter, and a optional 
 page number (default 0) and return HOCR XML describing not just the recognized text, but 
@@ -65,7 +75,25 @@ word_2_65' title='bbox 391 621 456 651; x_wconf 72' lang='eng' dir='ltr'>C50</sp
 
 This can be parsed using Common Lisp libraries such as Closure-XML and plump.
 
-Tested on CCL and SBCL.
+IMAGE-TO-TSV, IMAGE-TO-ALTO, and IMAGE-TO-PAGE take the same arguments as IMAGE-TO-HOCR and
+return, respectively: tab-separated-value text (one recognized element per row, more compact
+than HOCR for programmatic consumption), ALTO XML (a layout-analysis format used by
+libraries/archives), and PAGE XML (PRImA Page Analysis and Ground-truth Elements, another
+layout-analysis format) -- all new as of the 2026-07-26 update, none available in Tesseract
+3.04.
+
+Every one of these functions returns a Lisp string built by copying and then explicitly
+freeing (via TessDeleteText) a heap-allocated buffer Tesseract hands back -- the C API's
+documented ownership convention, which earlier versions of these bindings did not follow
+(they leaked that buffer on every call). In practice this leak was too small to be the
+dominant cost of repeated OCR calls in this API's design: creating a fresh TessBaseAPI and
+reloading its language model per call, as every IMAGE-TO-* function does, dominates memory
+churn far more than the text buffer ever did; a caller doing high-volume repeated OCR would
+get more benefit from keeping one TessBaseAPI alive across calls (via WITH-BASE-API,
+INIT-TESS-API, and PROCESS-PAGES directly) than from this fix alone.
+
+Tested on SBCL. The CCL claim from the original 3.04-era bindings is untested against this
+update -- verify before relying on it.
 
 License: 
 
