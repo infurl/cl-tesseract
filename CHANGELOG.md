@@ -38,6 +38,9 @@ technical account; summary:
 * Added this CHANGELOG.md, plus a MAINTENANCE.md split out from
   README.md: agent/developer/maintainer-oriented content in
   MAINTENANCE.md, strictly user-facing content in README.md.
+* The original 2015 README, superseded in content by the new
+  README.md, is preserved unedited as
+  [ORIGINAL_README.txt](ORIGINAL_README.txt) rather than deleted.
 
 ## Prior history (2015–2025)
 

@@ -17,7 +17,8 @@ scope.
 >
 > This is a fork of an existing open-source project, originally written
 > by Edward Geist ([GOFAI/cl-tesseract](https://github.com/GOFAI/cl-tesseract),
-> 2015).
+> 2015) — his original README is preserved as
+> [ORIGINAL_README.txt](ORIGINAL_README.txt).
 >
 > The 2026-07-26 update — bringing the bindings up to date against
 > Tesseract 5.5.0 — was carried out through close collaboration between

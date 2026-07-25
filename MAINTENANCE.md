@@ -14,6 +14,8 @@ committed 2015-10-18: SWIG-generated CFFI bindings against Tesseract
 namestring fix and an SBCL float-trap workaround followed the same year
 and in 2017; a Homebrew-on-Apple-Silicon path was merged 2025-01-09 (PR
 from `lispnik`) — otherwise untouched between 2017-11-12 and that merge.
+His original README is preserved, unedited, as
+[ORIGINAL_README.txt](ORIGINAL_README.txt).
 
 Forked to `infurl/cl-tesseract`, then modernized 2026-07-26 against a
 real Tesseract 5.5.0 + `libtesseract-dev` installation after being
