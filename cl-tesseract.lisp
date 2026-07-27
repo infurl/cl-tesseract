@@ -6,7 +6,7 @@
 
 (defun tesseract-version ()
   "Returns Tesseract version as string."
-  (tessversion))
+  (tess-version))
 
 #| On SBCL, libtesseract 3.04.00 signalled a SIGFPE while carrying out text recognition,
 under the old Cube OCR engine's numerics. While this had no effect using CCL, it required a
@@ -31,16 +31,16 @@ wraps body with an UNWIND-PROTECT form to ensure that TessBaseAPIEnd and TessBas
 are called on api-name upon exit."
   `(let (,handle)
      (unwind-protect
-         (let ((,api-name (setq ,handle (tessbaseapicreate))))
+         (let ((,api-name (setq ,handle (tess-base-api-create))))
            ,@body)
-       (tessbaseapiend ,handle)
-       (tessbaseapidelete ,handle))))
+       (tess-base-api-end ,handle)
+       (tess-base-api-delete ,handle))))
 
 (defun init-tess-api (api lang)
   "Calls TessBaseAPIInit3 on api and sets lang, which should be a string naming a
 .traineddata file in *tessdata-directory*. Attempting to set a language that is not available
 will raise an error."
-  (let ((return-code (tessbaseapiinit3 api *tessdata-directory* lang)))
+  (let ((return-code (tess-base-api-init3 api *tessdata-directory* lang)))
     (case return-code
       (-1 (error "Failure to initialize TessBaseAPI."))
       (0 t))))
@@ -56,7 +56,7 @@ function can process successfully.
 
 Returns T on success, otherwise signals error."
   (mask-sigfpe
-   (let ((return-code (tessbaseapiprocesspages api truename "" 0 (null-pointer))))
+   (let ((return-code (tess-base-api-process-pages api truename "" 0 (null-pointer))))
     (case return-code
       (1 t)
       (t (error "TessBaseAPIProcessPages returned failure."))))))
@@ -71,7 +71,7 @@ contents into a Lisp string and frees ptr, or returns NIL if ptr is a null point
 returns null here if, e.g., recognition produced no output)."
   (unless (null-pointer-p ptr)
     (prog1 (foreign-string-to-lisp ptr :encoding :utf-8)
-      (tessdeletetext ptr))))
+      (tess-delete-text ptr))))
 
 (defun get-utf8-text (api)
   "This function calls TessBaseAPIGetUTF8Text on api, which should be an initialized
@@ -80,7 +80,7 @@ carried out OCR on the image, it will be carried out. On SBCL, the division-by-z
 trap is masked to prevent it from causing a non-recoverable error.
 
 Returns a lisp string of the UTF-8 text produced by Tesseract."
-  (mask-sigfpe (owned-foreign-string (tessbaseapigetutf8text api))))
+  (mask-sigfpe (owned-foreign-string (tess-base-api-get-utf8-text api))))
 
 (defun get-hocr-text (api page)
   "This function calls TessBaseAPIGetHOCRText on api, which should be an initialized
@@ -90,24 +90,24 @@ trap is masked to prevent it from causing a non-recoverable error.
 
 Returns a lisp string of the HOCR XML produced by Tesseract. This can be parsed using
 Common Lisp XML packages such as CLOSURE-XML and plump."
-  (mask-sigfpe (owned-foreign-string (tessbaseapigethocrtext api page))))
+  (mask-sigfpe (owned-foreign-string (tess-base-api-get-hocr-text api page))))
 
 (defun get-tsv-text (api page)
   "Like GET-HOCR-TEXT, but calls TessBaseAPIGetTsvText, returning tab-separated-value text:
 one recognized element (block/paragraph/line/word) per row, with its level, bounding box,
 and confidence as columns. More compact than HOCR for programmatic consumption."
-  (mask-sigfpe (owned-foreign-string (tessbaseapigettsvtext api page))))
+  (mask-sigfpe (owned-foreign-string (tess-base-api-get-tsv-text api page))))
 
 (defun get-alto-text (api page)
   "Like GET-HOCR-TEXT, but calls TessBaseAPIGetAltoText, returning ALTO XML -- a layout-
 analysis XML format used by libraries and archives, distinct from HOCR."
-  (mask-sigfpe (owned-foreign-string (tessbaseapigetaltotext api page))))
+  (mask-sigfpe (owned-foreign-string (tess-base-api-get-alto-text api page))))
 
 (defun get-page-text (api page)
   "Like GET-HOCR-TEXT, but calls TessBaseAPIGetPAGEText, returning PAGE XML (PRImA Page
 Analysis and Ground-truth Elements), another layout-analysis XML format distinct from HOCR
 and ALTO."
-  (mask-sigfpe (owned-foreign-string (tessbaseapigetpagetext api page))))
+  (mask-sigfpe (owned-foreign-string (tess-base-api-get-page-text api page))))
 
 (defun run-ocr (filepath lang extractor)
   "Shared by the IMAGE-TO-* functions below: initializes a TessBaseAPI for lang, runs OCR on

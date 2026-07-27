@@ -78,6 +78,13 @@ If this signals an error instead, see MAINTENANCE.md's Known gotchas —
 most likely `*tessdata-directory*` didn't find your `.traineddata`
 files (see Reference below).
 
+**Run the regression checks** — a real integration suite against your
+own local Tesseract install (no mocks, no CI):
+
+```lisp
+(asdf:test-op :cl-tesseract)
+```
+
 ## Reference
 
 * **Exported symbols** (package `cl-tesseract`, nicknames `tesseract`/

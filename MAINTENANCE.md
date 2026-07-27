@@ -22,7 +22,10 @@ real Tesseract 5.5.0 + `libtesseract-dev` installation after being
 frozen at 3.04-era conventions for over a decade.
 
 **The 2026-07-26 modernization pass** is the bulk of what this document
-covers below.
+covers below. **A 2026-07-27 follow-up pass**, prompted by real reviewer
+feedback after that release (see "What changed in the 2026-07-27 pass"
+below), lispified the binding names and added the regression-check
+suite the prior pass's own "Known gotchas" flagged as missing.
 
 ## Architecture
 
@@ -184,12 +187,81 @@ simple synthetic test image was tried, not a survey of edge cases, so
 the macro is kept in place regardless as cheap defensive insurance
 rather than removed on the strength of one negative test.
 
+## What changed in the 2026-07-27 pass
+
+Prompted by real reviewer feedback after the 2026-07-26 release went
+public — someone asked, reasonably, why the bindings still read as raw
+C names (`TessBaseAPICreate` etc.) instead of ordinary Lisp identifiers,
+and separately, why there was no test suite.
+
+**Lispification.** Every `defcfun`'s Lisp-side name, every `defcenum`
+type name, and every enum value keyword in `capi.lisp` is now
+kebab-case: `TessBaseAPICreate` → `tess-base-api-create`,
+`TessOcrEngineMode` → `tess-ocr-engine-mode`, `:OEM_TESSERACT_ONLY` →
+`:oem-tesseract-only`. Only the Lisp-side symbol changed — the first
+argument to each `defcfun`, the actual string CFFI resolves against
+`libtesseract`, is untouched, so this is a pure renaming with no
+behavior change. Generated mechanically (a standard CamelCase-to-
+kebab-case regex pass: insert a hyphen between a lowercase/digit and a
+following uppercase letter, and between the last letter of an uppercase
+run and a following capitalized word), then reviewed by hand for
+acronym runs the generic rule gets wrong:
+- `TessHOcrRendererCreate`/`TessHOcrRendererCreate2` → `tess-hocr-
+  renderer-create`/`-create2`, not `tess-h-ocr-...` (the mechanical rule
+  would split `HOcr` into `H`+`Ocr`, since it's mixed-case in the real
+  header rather than a clean `HOCR` or `Hocr`).
+- `TessMonitorSetDeadlineMSecs` → `tess-monitor-set-deadline-msecs`,
+  not `...-deadline-m-secs` (`MSecs` is one abbreviation, milliseconds,
+  not the letter M followed by a word "Secs").
+- `TessResultRendererExtention` → `tess-result-renderer-extention`,
+  keeping the real header's own misspelling (it really is "Extention",
+  not "Extension", in `capi.h`) rather than silently correcting a typo
+  that would then no longer match the C name it's bound to.
+- `TRUE`/`FALSE` → `+true+`/`+false+`, the ordinary CL earmuff
+  convention for constants (neither is referenced anywhere in this
+  library's own code; both exist only for a caller reaching into
+  `capi.lisp` directly).
+
+All call sites in `cl-tesseract.lisp` (the five convenience functions
+and their shared plumbing) updated to match. Docstrings still name the
+underlying C function being called (e.g. "calls `TessBaseAPIRecognize`
+on api") deliberately — that's the identifier a reader needs to cross-
+reference `capi.h` itself, not the Lisp binding name.
+
+**Regression-check suite.** `tests/test-cl-tesseract.lisp` (new
+`cl-tesseract/tests` ASDF system, `(asdf:test-op :cl-tesseract)`), 19
+checks, using the same dependency-free `check`/`run-checks` harness
+convention as `/workspace/common-lisp/glr-parser`'s own test suite
+rather than pulling in an external test framework. Deliberately real
+integration checks, not mocks: a committed fixture image
+(`tests/fixtures/hello-tesseract.png`, "Hello Tesseract 5" rendered in
+DejaVu Sans Mono) is run through all five `image-to-*` functions
+against a genuine local Tesseract + `eng.traineddata` install, plus
+checks that the three renamed enums still resolve to their correct
+ordinals via `cffi:foreign-enum-value` (a direct regression guard for
+the lispification above), an error-path check
+(`init-tess-api` on a nonexistent language), and an `UNWIND-PROTECT`
+cleanup check for `with-base-api`. Mocking the FFI boundary itself
+would defeat the purpose — a CFFI signature drift, an enum-ordinal
+shift, or a renamed C symbol are exactly the bugs a mock would hide.
+**No CI wired up around this suite, on purpose**: this project's
+`git`/OKF conventions don't currently run anything on a push hook or a
+hosted CI service, and adding one felt like more infrastructure than a
+small, personal CFFI-bindings project warrants right now — revisit if
+that calculus changes (more contributors, a package-manager release,
+etc.), but it isn't default scope for a project this size.
+
 ## Reference: the full C-to-Lisp binding surface
 
-Every function in `capi.lisp` binds 1:1 to the identically-named C
+Every function in `capi.lisp` binds 1:1 to the correspondingly-named C
 function in `/usr/include/tesseract/capi.h` — see that header directly
-for parameter/return semantics beyond what's in this document; there is
-no separate binding-by-binding table here beyond what's already spelled
+for parameter/return semantics beyond what's in this document. Since
+the 2026-07-27 lispification pass, the Lisp-side name is no longer
+identical to the C name (`tess-base-api-create` vs. `TessBaseAPICreate`)
+but is mechanically derivable from it (kebab-case the C name); the
+first argument to each `defcfun` — the actual foreign-symbol string CFFI
+links against — is still the exact, unmodified C name. There is no
+separate binding-by-binding table here beyond what's already spelled
 out above; the enum/struct/general-free-function/renderer/base-API/
 page-iterator/result-iterator/choice-iterator/progress-monitor grouping
 in `capi.lisp` itself (each under its own `;;;` comment header) mirrors
@@ -197,11 +269,6 @@ the header's own section structure.
 
 ## Known gotchas / open scope
 
-- **No test suite.** Verification for the 2026-07-26 pass was manual:
-  a synthetic test image, run through all five `image-to-*` functions
-  plus the RSS-measurement scripts described above, all in throwaway
-  `sbcl --script` processes. Nothing here is wired into an ASDF
-  `:test-op` or run automatically.
 - **CCL untested.** The original project claimed CCL support; that
   claim predates this update and has not been re-verified against
   Tesseract 5.5.

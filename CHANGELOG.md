@@ -4,6 +4,40 @@ All notable changes to cl-tesseract, in reverse-chronological order.
 There's no version-number scheme for this project, so entries are dated
 instead.
 
+## 2026-07-27
+
+Prompted by real reviewer feedback after the 2026-07-26 release (see
+MAINTENANCE.md's "Known gotchas" for the full account):
+
+* **`capi.lisp`'s Lisp-side bindings lispified to kebab-case.** All 139
+  `defcfun` names, all 8 `defcenum` type names, and every enum value
+  keyword (`_` → `-`) now read as ordinary Lisp identifiers
+  (`tess-base-api-create`, `tess-ocr-engine-mode`, `:oem-tesseract-only`,
+  etc.) instead of the raw CamelCase C names the bindings previously
+  reused verbatim (`TessBaseAPICreate` read as-is). The actual CFFI
+  foreign-symbol strings — what really gets linked against
+  `libtesseract` — are untouched; only the Lisp-side name changed. Two
+  acronym runs needed a manual override rather than the generic
+  CamelCase-to-kebab-case rule (`TessHOcrRendererCreate` → `tess-hocr-
+  renderer-create`, not `tess-h-ocr-...`; `TessMonitorSetDeadlineMSecs`
+  → `...-deadline-msecs`, not `...-deadline-m-secs`).
+  `TessResultRendererExtention` keeps the header's own real misspelling
+  (`tess-result-renderer-extention`) rather than silently correcting it.
+  `TRUE`/`FALSE` renamed to `+true+`/`+false+` per ordinary CL constant
+  convention. All call sites in `cl-tesseract.lisp` updated to match.
+* **Added a regression-check suite** (`tests/test-cl-tesseract.lisp`,
+  new `cl-tesseract/tests` ASDF system, run via
+  `(asdf:test-op :cl-tesseract)`), closing the "No test suite" item from
+  the prior pass's known gotchas. 19 checks, run as real integration
+  tests against a genuine local Tesseract install and a small committed
+  fixture image (`tests/fixtures/hello-tesseract.png`) rather than
+  mocks — mocking the FFI boundary itself would test nothing that could
+  actually regress here (a signature drift, an enum-ordinal shift, a
+  renamed C symbol). No CI wired up — a deliberate choice, see
+  MAINTENANCE.md.
+* Documented `tessdata`/`tesseract` GitHub mirrors added under
+  `resources/github/` for provenance cross-referencing.
+
 ## 2026-07-26
 
 Full modernization to Tesseract 5.5.0, after over a decade frozen at
