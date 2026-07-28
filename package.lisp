@@ -13,5 +13,6 @@
    #:image-to-hocr
    #:image-to-tsv
    #:image-to-alto
-   #:image-to-page))
+   #:image-to-page
+   #:image-to-word-styles))
 

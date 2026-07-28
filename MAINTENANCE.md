@@ -326,6 +326,78 @@ rather than by comparing recognized output, since the committed
 produce visibly different output between segmentation modes, unlike the
 real book page that surfaced this bug in the first place.
 
+### Word-level font-style attributes (`image-to-word-styles`)
+
+Added for `cl-ocr`'s real, concrete need: ASITEG (the book it OCRs)
+encodes grammatical signal in bold/italic/small-caps typography (e.g.
+one of its own footnotes: "We use boldface for technical terms..."),
+which none of the five existing `image-to-*` functions can recover —
+TSV/HOCR/ALTO/PAGE all carry text and layout, none carry font/style
+attributes.
+
+**Confirmed empirically, not assumed from Tesseract's docs, that this
+requires the legacy engine specifically.** Called
+`TessResultIteratorWordFontAttributes` against the committed
+`hello-tesseract.png` fixture under both engines on the same real
+install:
+- `:oem-lstm-only` (what every other `image-to-*` function in this file
+  effectively uses, since `TessBaseAPIInit3` has no OEM parameter and
+  uses Tesseract's own default): font-name comes back a null pointer,
+  every boolean attribute (`is_bold`, `is_italic`, etc.) hardcoded
+  false. Not an error — a caller trusting those zeros as "detected as
+  not bold" would be silently, permanently wrong.
+- `:oem-tesseract-only` (the legacy engine): real, discriminating data.
+
+**Also confirmed the legacy engine's own real-world prerequisite the
+hard way, not by reading changelogs.** Debian/Ubuntu's
+`tesseract-ocr-eng` apt package's `eng.traineddata` (LSTM-only "fast"
+data, 4.1MB) fails `TessBaseAPIInit2` outright:
+`Error: Tesseract (legacy) engine requested, but components are not
+present in .../eng.traineddata!!` — confirmed directly against this
+machine's own installed copy. A full tessdata bundle (the real
+[tesseract-ocr/tessdata](https://github.com/tesseract-ocr/tessdata)
+repo, 23MB `eng.traineddata` — *not* `tessdata_fast`/`tessdata_best`,
+both also LSTM-only) does have the legacy components and inits cleanly.
+This workspace already had such a mirror cloned locally specifically
+for this purpose (`resources/github/tessdata`, outside this repo, not
+committed here) — used to verify the positive path, including a real
+bold-vs-plain discrimination test: a purpose-built fixture,
+`tests/fixtures/word-styles.png` (one word in DejaVu Sans, one in DejaVu
+Sans Bold), correctly comes back `:bold nil` / `:bold t` respectively.
+See README's Cookbook for the actual verified output.
+
+**Design**: `image-to-word-styles` returns a list of plists (one per
+word: `:text` plus its bounding box and all eight font attributes)
+rather than a string — a deliberate departure from every other
+`image-to-*` function, since there's no standard textual serialization
+for font attributes to mirror. Internals: `init-tess-api-with-oem` (new,
+wraps `TessBaseAPIInit2` so OEM can be selected — every other function
+keeps using `init-tess-api`/`TessBaseAPIInit3` unchanged, so this is
+purely additive, no existing call site touched), `word-bounding-box`
+(wraps `TessPageIteratorBoundingBox`, callable directly on a
+`TessResultIterator` handle since `ResultIterator` is a specialization
+of `PageIterator` in Tesseract's own C++ design and the C API reuses the
+same pointer for both — confirmed by testing, not just inferred from
+the class hierarchy), `word-font-attributes` (wraps the 8-out-parameter
+`TessResultIteratorWordFontAttributes`). Iterates via the canonical
+Tesseract do-while pattern (`TessResultIteratorNext` both advances and
+signals whether more remain), with an explicit
+`TessResultIteratorDelete` in an `unwind-protect` — iterators are a
+separate allocation from the `TessBaseAPI` itself and need their own
+cleanup, distinct from what `with-base-api`'s own `unwind-protect`
+already handles.
+
+**Test suite stays portable.** The automated regression check
+(`test-image-to-word-styles-robustness`) does NOT hard-code a path to
+any legacy-capable tessdata bundle — that's a workspace-local resource,
+not something a fresh clone of this public repo can assume exists. It
+instead verifies the function degrades gracefully either way (real data
+or a clean, catchable error, never an uncontrolled crash), which is
+true regardless of which tessdata the machine running it happens to
+have configured. The real bold-vs-plain verification above happened by
+hand against the local `resources/github/tessdata` mirror and is
+documented here in prose instead.
+
 ## Reference: the full C-to-Lisp binding surface
 
 Every function in `capi.lisp` binds 1:1 to the correspondingly-named C
@@ -375,10 +447,13 @@ the header's own section structure.
 **`cl-ocr`** (in the sibling `asiteg/` checkout) — a full-book OCR
 pipeline that runs Tesseract over every page of a source PDF and
 caches the results under `$XDG_CACHE_HOME/cl-ocr/`. Uses `image-to-tsv`/
-`image-to-text` (and, as new output formats are added, potentially
-`image-to-hocr`/`-alto`/`-page` for font-styling information beyond
-what TSV carries) from multiple threads at once — each call creates and
+`image-to-text` from multiple threads at once — each call creates and
 tears down its own `TessBaseAPI` (see "`run-ocr`'s design" in Known
 gotchas below), which is Tesseract's own recommended pattern for
 multi-threaded use, so no changes were needed here to support that.
-Surfaced the 2026-07-28 `:psm` fix above.
+Surfaced the 2026-07-28 `:psm` fix above. Now also caching
+`image-to-word-styles` output (same 2026-07-28 pass, added directly for
+this consumer's real need — see that function's own section above) to
+recover bold/italic typography signal the plain OCR pass throws away;
+combining it with the LSTM-pass word data is real, not-yet-fully-
+resolved design work happening on the `cl-ocr` side, not here.

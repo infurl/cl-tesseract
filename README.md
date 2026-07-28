@@ -3,10 +3,10 @@
 CFFI (Common Foreign Function Interface) bindings for
 [Tesseract OCR](https://github.com/tesseract-ocr/tesseract), giving
 Common Lisp callers direct access to Tesseract's C API instead of
-shelling out to the `tesseract` command-line tool. Five convenience
-functions cover the common case — pull recognized text or layout
-information out of an image file in one call — plus the full underlying
-C API for anything more involved.
+shelling out to the `tesseract` command-line tool. Six convenience
+functions cover the common case — pull recognized text, layout, or
+per-word font-style information out of an image file in one call — plus
+the full underlying C API for anything more involved.
 
 See [CHANGELOG.md](CHANGELOG.md) for the dated history of what's changed
 and [MAINTENANCE.md](MAINTENANCE.md) for design rationale, the full
@@ -33,6 +33,11 @@ scope.
   HOCR XML, TSV, ALTO XML, or PAGE XML respectively, each with layout/
   confidence information beyond plain text (except `image-to-text`
   itself).
+* `image-to-word-styles` — run OCR and get back real bold/italic/
+  underlined/monospace/serif/smallcaps/font-name/pointsize data per
+  word, as structured Lisp data rather than a string. Requires
+  Tesseract's legacy engine and a tessdata file with real legacy-engine
+  components — see Cookbook.
 * `with-base-api`, `init-tess-api`, `process-pages`, and the full
   `capi.lisp` binding set for direct access to Tesseract's C API, if the
   five convenience functions above aren't enough.
@@ -97,12 +102,15 @@ own local Tesseract install (no mocks, no CI):
   `:psm-single-block`) to override it; see MAINTENANCE.md for why this
   default matters (`TessBaseAPIInit3` itself defaults to
   `:psm-single-block`, silently merging separate blocks/columns
-  together). `tesseract-version`,
+  together). `image-to-word-styles` is `(filepath &key (lang "eng")
+  (psm :psm-auto))`, no `page` argument (font styles aren't a per-page
+  format the way TSV/HOCR/ALTO/PAGE are) — see Cookbook for its real
+  requirements and return shape. `tesseract-version`,
   `*tessdata-directory*`, plus the lower-level `with-base-api`,
   `init-tess-api`, `process-pages` if you need to drive a `TessBaseAPI`
   yourself (see Cookbook). Everything in `capi.lisp` (the raw C
   bindings) is unexported but usable via `cl-tesseract::` if you need
-  something the five convenience functions don't expose — progress-
+  something the six convenience functions don't expose — progress-
   monitor/cancellation, loading a model from memory instead of a
   datapath, orientation/script detection, and more; see
   MAINTENANCE.md's Reference for the full C-to-Lisp binding table.
@@ -148,6 +156,41 @@ the call:
 (let ((cl-tesseract:*tessdata-directory* "/path/to/your/tessdata/"))
   (cl-tesseract:image-to-text #p"/path/to/an/image.png"))
 ```
+
+**Get real bold/italic/font-name data per word** — `image-to-word-styles`
+instead of any of the five text/layout functions above. This one has a
+real prerequisite the others don't: it uses Tesseract's *legacy* engine
+internally, which needs a tessdata file with actual legacy-engine
+components. Debian/Ubuntu's `tesseract-ocr-<lang>` apt package ships
+LSTM-only "fast" data and will fail outright ("Tesseract (legacy) engine
+requested, but components are not present") — download a full bundle
+from [tesseract-ocr/tessdata](https://github.com/tesseract-ocr/tessdata)
+(not `tessdata_fast`/`tessdata_best`, which are also LSTM-only) and point
+`*tessdata-directory*` at it:
+
+```lisp
+(let ((cl-tesseract:*tessdata-directory* "/path/to/tessdata/")) ; the full tessdata repo, not tessdata_fast
+  (cl-tesseract:image-to-word-styles #p"/path/to/an/image.png"))
+;=> ((:TEXT "plain" :LEFT 10 :TOP 27 :RIGHT 100 :BOTTOM 55 :FONT-NAME "DejaVu_Sans"
+      :BOLD NIL :ITALIC NIL :UNDERLINED NIL :MONOSPACE NIL :SERIF NIL :SMALLCAPS NIL
+      :POINTSIZE 30 :FONT-ID 84)
+     (:TEXT "strong" :LEFT 200 :TOP 27 :RIGHT 320 :BOTTOM 55 :FONT-NAME "DejaVu_Sans"
+      :BOLD T :ITALIC NIL :UNDERLINED NIL :MONOSPACE NIL :SERIF NIL :SMALLCAPS NIL
+      :POINTSIZE 30 :FONT-ID 84))
+```
+
+That's real output (`tests/fixtures/word-styles.png`, one word rendered
+in DejaVu Sans, one in DejaVu Sans Bold) — `:bold` genuinely
+discriminates. `:font-name`/`:font-id` come from Tesseract's own font
+classifier, which is a best-effort guess (matched against whatever fonts
+Tesseract was trained on, not a real font-metadata lookup) — treat
+`:bold`/`:italic`/`:underlined`/`:monospace`/`:serif`/`:smallcaps` as the
+reliable signal, `:font-name` as a rough hint. The LSTM engine (what
+every other `image-to-*` function uses) does not populate any of this —
+`:font-name` comes back `nil` and every boolean attribute `nil` rather
+than erroring, so don't reach for this function expecting it to work
+with whatever `*tessdata-directory*` you already have for the others
+without checking first.
 
 ## License
 

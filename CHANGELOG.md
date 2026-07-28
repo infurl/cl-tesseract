@@ -30,6 +30,31 @@ for full-length book PDFs — see MAINTENANCE.md's "Consumers"):
   load-bearing), that setting `:psm-auto` explicitly actually moves it
   away from that default, and that the `:psm` keyword genuinely reaches
   the C call through `image-to-tsv`.
+* **Added `image-to-word-styles`**, a sixth convenience function: real
+  per-word bold/italic/underlined/monospace/serif/smallcaps/font-name/
+  pointsize data, for `cl-ocr`'s planned use of this signal to recover
+  typographic emphasis a plain OCR pass throws away. Returns structured
+  Lisp data (a list of plists) rather than a string, unlike every other
+  `image-to-*` function — there's no standard textual format carrying
+  font attributes the way TSV/HOCR/ALTO/PAGE do for text/layout. Uses
+  Tesseract's legacy engine internally (`TessBaseAPIInit2` with
+  `:oem-tesseract-only`, via a new `init-tess-api-with-oem` helper;
+  every other function is untouched, still using `init-tess-api`/
+  `TessBaseAPIInit3`) — confirmed empirically that the LSTM engine
+  (what every other function effectively uses) returns a null font-name
+  and every boolean attribute hardcoded false rather than erroring, so
+  this isn't a style preference, real font data genuinely requires the
+  legacy engine. That engine in turn needs a tessdata file with real
+  legacy-engine components — Debian/Ubuntu's `tesseract-ocr-<lang>` apt
+  package (LSTM-only "fast" data) fails outright; verified against the
+  real upstream [tesseract-ocr/tessdata](https://github.com/tesseract-ocr/tessdata)
+  mirror instead, including a genuine bold-vs-plain discrimination test
+  (new fixture `tests/fixtures/word-styles.png`) — see README's Cookbook
+  for the real verified output. 1 new regression check (23 total): a
+  portable robustness check (real data or a clean error, never an
+  uncontrolled crash) rather than a hard-coded legacy-tessdata
+  dependency in the automated suite, since that's a workspace-local
+  resource, not something a fresh clone can assume.
 
 ## 2026-07-27
 

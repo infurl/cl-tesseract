@@ -159,3 +159,82 @@ see RUN-OCR). Returns ALTO xml string; see GET-ALTO-TEXT."
 segmentation mode psm (:PSM-AUTO by default, matching the tesseract CLI tool's own default --
 see RUN-OCR). Returns PAGE xml string; see GET-PAGE-TEXT."
   (run-ocr filepath lang psm (lambda (api) (get-page-text api page))))
+
+;;; word-level font-style attributes -------------------------------------------------------------
+;;;
+;;; Real bold/italic/underlined/monospace/serif/smallcaps/font-name/pointsize signal is only
+;;; available under Tesseract's legacy engine (:OEM-TESSERACT-ONLY) -- confirmed empirically:
+;;; under the LSTM engine (:OEM-LSTM-ONLY, what every other function in this file effectively
+;;; uses, since TessBaseAPIInit3 has no OEM parameter of its own), TessResultIteratorWordFont-
+;;; Attributes returns a null font-name pointer and every boolean attribute hardcoded false
+;;; rather than signaling an error -- a caller trusting those zeros as "detected as not bold"
+;;; would be silently wrong. The legacy engine also needs a tessdata file with real legacy-
+;;; engine components: Debian/Ubuntu's tesseract-ocr-<lang> apt package ships LSTM-only "fast"
+;;; data and fails TessBaseAPIInit2 outright ("Tesseract (legacy) engine requested, but
+;;; components are not present") -- point *tessdata-directory* at a full tessdata bundle (e.g.
+;;; https://github.com/tesseract-ocr/tessdata, NOT tessdata_fast/tessdata_best) instead.
+
+(defun init-tess-api-with-oem (api lang oem)
+  "Like INIT-TESS-API, but calls TessBaseAPIInit2 instead of TessBaseAPIInit3 so oem can be
+selected explicitly -- TessBaseAPIInit3 has no OEM parameter and uses Tesseract's own default.
+Only IMAGE-TO-WORD-STYLES needs this; every other function in this file keeps using
+INIT-TESS-API/Init3 unchanged."
+  (let ((return-code (tess-base-api-init2 api *tessdata-directory* lang oem)))
+    (case return-code
+      (-1 (error "Failure to initialize TessBaseAPI (oem ~S)." oem))
+      (0 t))))
+
+(defun word-bounding-box (iterator)
+  "Returns a plist (:LEFT :TOP :RIGHT :BOTTOM) for iterator's current word, via
+TessPageIteratorBoundingBox -- valid to call directly on a TessResultIterator handle, since
+ResultIterator is a specialization of PageIterator in Tesseract's own C++ design and the C API
+reuses the same pointer for both."
+  (with-foreign-objects ((left :int) (top :int) (right :int) (bottom :int))
+    (tess-page-iterator-bounding-box iterator :ril-word left top right bottom)
+    (list :left (mem-ref left :int) :top (mem-ref top :int)
+          :right (mem-ref right :int) :bottom (mem-ref bottom :int))))
+
+(defun word-font-attributes (iterator)
+  "Returns a plist of iterator's current word's font/style attributes, via
+TessResultIteratorWordFontAttributes -- :FONT-NAME will be NIL and every boolean attribute NIL
+under any engine but :OEM-TESSERACT-ONLY (see this section's own header comment)."
+  (with-foreign-objects ((bold :int) (italic :int) (underlined :int) (monospace :int)
+                          (serif :int) (smallcaps :int) (pointsize :int) (font-id :int))
+    (let ((font-name (tess-result-iterator-word-font-attributes
+                       iterator bold italic underlined monospace serif smallcaps pointsize font-id)))
+      (list :font-name font-name
+            :bold (plusp (mem-ref bold :int))
+            :italic (plusp (mem-ref italic :int))
+            :underlined (plusp (mem-ref underlined :int))
+            :monospace (plusp (mem-ref monospace :int))
+            :serif (plusp (mem-ref serif :int))
+            :smallcaps (plusp (mem-ref smallcaps :int))
+            :pointsize (mem-ref pointsize :int)
+            :font-id (mem-ref font-id :int)))))
+
+(defun image-to-word-styles (filepath &key (lang "eng") (psm :psm-auto))
+  "Runs OCR on the file found at filepath for language lang (English by default) using
+Tesseract's LEGACY engine (:OEM-TESSERACT-ONLY -- required for real font-style data, see this
+section's own header comment), with page segmentation mode psm (:PSM-AUTO by default).
+
+Returns a list of plists, one per recognized word, combining WORD-BOUNDING-BOX and
+WORD-FONT-ATTRIBUTES with the word's own recognized text: (:TEXT :LEFT :TOP :RIGHT :BOTTOM
+:FONT-NAME :BOLD :ITALIC :UNDERLINED :MONOSPACE :SERIF :SMALLCAPS :POINTSIZE :FONT-ID). Returns
+NIL if no words were recognized at all (TessBaseAPIGetIterator itself returns null in that
+case, e.g. a blank page).
+
+Unlike this file's other IMAGE-TO-* functions, this does not return a string in a standard OCR
+output format -- there is no standard textual format carrying font attributes the way TSV/
+HOCR/ALTO/PAGE do for text/layout, so structured Lisp data is returned directly instead."
+  (with-base-api api
+    (init-tess-api-with-oem api lang :oem-tesseract-only)
+    (tess-base-api-set-page-seg-mode api psm)
+    (process-pages api (namestring (truename filepath)))
+    (let ((iterator (tess-base-api-get-iterator api)))
+      (unless (null-pointer-p iterator)
+        (unwind-protect
+            (loop collect (list* :text (owned-foreign-string
+                                         (tess-result-iterator-get-utf8-text iterator :ril-word))
+                                  (append (word-bounding-box iterator) (word-font-attributes iterator)))
+                  while (plusp (tess-result-iterator-next iterator :ril-word)))
+          (tess-result-iterator-delete iterator))))))

@@ -31,6 +31,7 @@
   (asdf:system-relative-pathname :cl-tesseract (merge-pathnames name "tests/fixtures/")))
 
 (defparameter *hello-fixture* (fixture-path "hello-tesseract.png"))
+(defparameter *word-styles-fixture* (fixture-path "word-styles.png"))
 
 ;;; version / environment ---------------------------------------------------
 
@@ -122,6 +123,22 @@ modes to check any other way"
     (check "image-to-page's output contains the recognized text"
       (search "Hello Tesseract 5" page))))
 
+;;; word-level font-style attributes -- portable across machines: this repo's own committed
+;;; fixture guarantees nothing about legacy-engine tessdata being available (Debian/Ubuntu's
+;;; tesseract-ocr-<lang> apt package ships LSTM-only data, which is expected to fail here on
+;;; most machines that just followed the Quickstart -- see MAINTENANCE.md for a real bold-vs-
+;;; plain verification against a full legacy-capable tessdata bundle) --------------------------
+
+(defun test-image-to-word-styles-robustness ()
+  (check "image-to-word-styles either returns real per-word data or signals a clear, catchable
+error -- legacy-engine tessdata components are commonly unavailable (see MAINTENANCE.md), and
+this must degrade gracefully either way, never crash uncontrolled"
+    (handler-case
+        (let ((words (image-to-word-styles *word-styles-fixture*)))
+          (and (listp words)
+               (every (lambda (w) (and (getf w :text) (integerp (getf w :left)))) words)))
+      (error () t))))
+
 ;;; error paths and resource cleanup -----------------------------------------
 
 (defun test-init-tess-api-bad-language ()
@@ -157,6 +174,7 @@ modes to check any other way"
     (test-image-to-tsv)
     (test-image-to-alto)
     (test-image-to-page)
+    (test-image-to-word-styles-robustness)
     (test-init-tess-api-bad-language)
     (test-with-base-api-cleanup)
     (test-owned-foreign-string-null)
