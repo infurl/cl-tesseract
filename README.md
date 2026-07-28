@@ -90,8 +90,14 @@ own local Tesseract install (no mocks, no CI):
 * **Exported symbols** (package `cl-tesseract`, nicknames `tesseract`/
   `tess`): `image-to-text`, `image-to-hocr`, `image-to-tsv`,
   `image-to-alto`, `image-to-page` — each `(filepath &key (lang "eng")
-  (page 0))` (`image-to-text` has no `page` argument, since plain text
-  has no per-page layout to select). `tesseract-version`,
+  (page 0) (psm :psm-auto))` (`image-to-text` has no `page` argument,
+  since plain text has no per-page layout to select). `psm` defaults to
+  `:psm-auto` to match the `tesseract` CLI tool's own default — pass one
+  of `capi.lisp`'s `tess-page-seg-mode` enum values (e.g.
+  `:psm-single-block`) to override it; see MAINTENANCE.md for why this
+  default matters (`TessBaseAPIInit3` itself defaults to
+  `:psm-single-block`, silently merging separate blocks/columns
+  together). `tesseract-version`,
   `*tessdata-directory*`, plus the lower-level `with-base-api`,
   `init-tess-api`, `process-pages` if you need to drive a `TessBaseAPI`
   yourself (see Cookbook). Everything in `capi.lisp` (the raw C

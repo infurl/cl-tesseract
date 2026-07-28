@@ -59,6 +59,34 @@
   (check "tess-page-iterator-level's :ril-word resolves (enum lispified correctly)"
     (= 3 (cffi:foreign-enum-value 'tess-page-iterator-level :ril-word))))
 
+;;; page segmentation mode -- regression guard for the 2026-07-28 fix: RUN-OCR must
+;;; explicitly set :PSM-AUTO rather than silently inheriting TessBaseAPIInit3's own raw
+;;; default, which real testing against a multi-block book page (see MAINTENANCE.md) showed
+;;; to be :PSM-SINGLE-BLOCK -- geometrically wrong output (blocks merged together), not an
+;;; error, so nothing short of a real check like this would catch a regression here ----------
+
+(defun test-default-page-seg-mode ()
+  (check "TessBaseAPIInit3's own raw default page-seg-mode is still :PSM-SINGLE-BLOCK -- if
+this ever changes, RUN-OCR's explicit :PSM-AUTO default becomes redundant rather than
+load-bearing, worth knowing either way"
+    (with-base-api api
+      (init-tess-api api "eng")
+      (eq :psm-single-block (tess-base-api-get-page-seg-mode api))))
+  (check "explicitly setting :PSM-AUTO (what RUN-OCR does before every OCR call) actually
+moves it away from that raw default"
+    (with-base-api api
+      (init-tess-api api "eng")
+      (tess-base-api-set-page-seg-mode api :psm-auto)
+      (eq :psm-auto (tess-base-api-get-page-seg-mode api)))))
+
+(defun test-image-to-tsv-psm-override ()
+  (check "image-to-tsv's :psm keyword actually reaches the C call -- confirmed via
+TessBaseAPIGetPageSegMode from inside a custom extractor, since the fixture image itself
+(one short line of text) doesn't produce different recognized output between segmentation
+modes to check any other way"
+    (run-ocr *hello-fixture* "eng" :psm-single-word
+             (lambda (api) (eq :psm-single-word (tess-base-api-get-page-seg-mode api))))))
+
 ;;; the five convenience functions, each against the real fixture image -----
 
 (defun test-image-to-text ()
@@ -122,7 +150,9 @@
     (test-tesseract-version)
     (test-tessdata-directory)
     (test-enum-values)
+    (test-default-page-seg-mode)
     (test-image-to-text)
+    (test-image-to-tsv-psm-override)
     (test-image-to-hocr)
     (test-image-to-tsv)
     (test-image-to-alto)

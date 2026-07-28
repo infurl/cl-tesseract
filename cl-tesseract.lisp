@@ -109,36 +109,53 @@ Analysis and Ground-truth Elements), another layout-analysis XML format distinct
 and ALTO."
   (mask-sigfpe (owned-foreign-string (tess-base-api-get-page-text api page))))
 
-(defun run-ocr (filepath lang extractor)
-  "Shared by the IMAGE-TO-* functions below: initializes a TessBaseAPI for lang, runs OCR on
-the file at filepath, then calls extractor (a function of one argument, the recognized
-TessBaseAPI handle) to pull out and return the desired output format."
+(defun run-ocr (filepath lang psm extractor)
+  "Shared by the IMAGE-TO-* functions below: initializes a TessBaseAPI for lang, sets its
+page segmentation mode to psm, runs OCR on the file at filepath, then calls extractor (a
+function of one argument, the recognized TessBaseAPI handle) to pull out and return the
+desired output format.
+
+psm must default to :PSM-AUTO at every call site above this function, not to whatever
+TessBaseAPIInit3 itself defaults to (:PSM-SINGLE-BLOCK, confirmed by calling
+TessBaseAPIGetPageSegMode immediately after init with no other calls in between) -- the
+tesseract CLI tool sets :PSM-AUTO explicitly before OCR unless its own --psm flag overrides
+it, so leaving TessBaseAPIInit3's raw default in place silently produces geometrically wrong
+block/paragraph/line boxes on any multi-block page, not an error: confirmed directly against
+a real book's title page, whose CLI-tool TSV output correctly separates title/author blocks
+while the un-set-PSM API output merges the entire page into one oversized block."
   (with-base-api api
     (init-tess-api api lang)
+    (tess-base-api-set-page-seg-mode api psm)
     (process-pages api (namestring (truename filepath))) ; protected from SIGFPE on sbcl
     (funcall extractor api))) ; no need to mask float traps after process-pages
 
-(defun image-to-text (filepath &key (lang "eng"))
-  "Runs OCR on the file found at filepath for language lang (English by default). Returns
-text string."
-  (run-ocr filepath lang #'get-utf8-text))
+(defun image-to-text (filepath &key (lang "eng") (psm :psm-auto))
+  "Runs OCR on the file found at filepath for language lang (English by default), with page
+segmentation mode psm (:PSM-AUTO by default, matching the tesseract CLI tool's own default --
+see RUN-OCR). Returns text string."
+  (run-ocr filepath lang psm #'get-utf8-text))
 
-(defun image-to-hocr (filepath &key (lang "eng") (page 0))
-  "Runs OCR on the file found at filepath for language lang (English by default). Returns
-HOCR xml string."
-  (run-ocr filepath lang (lambda (api) (get-hocr-text api page))))
+(defun image-to-hocr (filepath &key (lang "eng") (page 0) (psm :psm-auto))
+  "Runs OCR on the file found at filepath for language lang (English by default), with page
+segmentation mode psm (:PSM-AUTO by default, matching the tesseract CLI tool's own default --
+see RUN-OCR). Returns HOCR xml string."
+  (run-ocr filepath lang psm (lambda (api) (get-hocr-text api page))))
 
-(defun image-to-tsv (filepath &key (lang "eng") (page 0))
-  "Runs OCR on the file found at filepath for language lang (English by default). Returns
-tab-separated-value text describing recognized text and layout; see GET-TSV-TEXT."
-  (run-ocr filepath lang (lambda (api) (get-tsv-text api page))))
+(defun image-to-tsv (filepath &key (lang "eng") (page 0) (psm :psm-auto))
+  "Runs OCR on the file found at filepath for language lang (English by default), with page
+segmentation mode psm (:PSM-AUTO by default, matching the tesseract CLI tool's own default --
+see RUN-OCR). Returns tab-separated-value text describing recognized text and layout; see
+GET-TSV-TEXT."
+  (run-ocr filepath lang psm (lambda (api) (get-tsv-text api page))))
 
-(defun image-to-alto (filepath &key (lang "eng") (page 0))
-  "Runs OCR on the file found at filepath for language lang (English by default). Returns
-ALTO xml string; see GET-ALTO-TEXT."
-  (run-ocr filepath lang (lambda (api) (get-alto-text api page))))
+(defun image-to-alto (filepath &key (lang "eng") (page 0) (psm :psm-auto))
+  "Runs OCR on the file found at filepath for language lang (English by default), with page
+segmentation mode psm (:PSM-AUTO by default, matching the tesseract CLI tool's own default --
+see RUN-OCR). Returns ALTO xml string; see GET-ALTO-TEXT."
+  (run-ocr filepath lang psm (lambda (api) (get-alto-text api page))))
 
-(defun image-to-page (filepath &key (lang "eng") (page 0))
-  "Runs OCR on the file found at filepath for language lang (English by default). Returns
-PAGE xml string; see GET-PAGE-TEXT."
-  (run-ocr filepath lang (lambda (api) (get-page-text api page))))
+(defun image-to-page (filepath &key (lang "eng") (page 0) (psm :psm-auto))
+  "Runs OCR on the file found at filepath for language lang (English by default), with page
+segmentation mode psm (:PSM-AUTO by default, matching the tesseract CLI tool's own default --
+see RUN-OCR). Returns PAGE xml string; see GET-PAGE-TEXT."
+  (run-ocr filepath lang psm (lambda (api) (get-page-text api page))))

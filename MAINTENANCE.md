@@ -25,7 +25,11 @@ frozen at 3.04-era conventions for over a decade.
 covers below. **A 2026-07-27 follow-up pass**, prompted by real reviewer
 feedback after that release (see "What changed in the 2026-07-27 pass"
 below), lispified the binding names and added the regression-check
-suite the prior pass's own "Known gotchas" flagged as missing.
+suite the prior pass's own "Known gotchas" flagged as missing. **A
+2026-07-28 pass** fixed a real page-segmentation-mode default mismatch
+against the `tesseract` CLI tool, found while wiring up this library's
+first real consumer (see "What changed in the 2026-07-28 pass" and
+"Consumers" below).
 
 ## Architecture
 
@@ -251,6 +255,77 @@ small, personal CFFI-bindings project warrants right now — revisit if
 that calculus changes (more contributors, a package-manager release,
 etc.), but it isn't default scope for a project this size.
 
+## What changed in the 2026-07-28 pass
+
+Found while wiring up `cl-ocr` (a full-book OCR pipeline, this
+library's first real consumer — see "Consumers" below) against a real
+320-page book PDF: page reconstruction failed on essentially every page
+tried, not just unusual ones.
+
+Root-caused by diffing `image-to-tsv`'s output against the `tesseract`
+CLI tool's output for the exact same rasterized PNG (the book's title
+page). Two discrepancies, both confirmed rather than assumed:
+
+- **The real bug**: `TessBaseAPIInit3` defaults `page_seg_mode` to
+  `PSM_SINGLE_BLOCK` — confirmed directly by calling
+  `TessBaseAPIGetPageSegMode` immediately after `init-tess-api` with no
+  other calls in between. The `tesseract` CLI tool, by contrast, sets
+  `PSM_AUTO` explicitly before OCR unless overridden by its own `--psm`
+  flag — a default that lives in the CLI program itself, invisible to
+  anyone calling the C API directly the way this library does. Since
+  none of the five `image-to-*` functions ever called
+  `TessBaseAPISetPageSegMode`, they silently inherited single-block
+  mode: on the title page, the CLI's TSV output correctly separates
+  "A Student's Introduction to English Grammar" (title) from "Rodney
+  Huddleston and Geoffrey K. Pullum" (authors) into two blocks with
+  accurate bounding boxes; the un-set-PSM API output merged the entire
+  page (title, authors, and the blank space around them) into one
+  oversized `block_1` spanning nearly the full page height. Not a crash
+  — geometrically wrong output, which is worse, since nothing signals
+  that anything went wrong at the OCR-call site itself. (It surfaced
+  downstream as `OCR-PARENT-ERROR` in `cl-ocr`'s own page-reconstruction
+  code, once that code's assumptions about block/paragraph nesting broke
+  against the malformed geometry — a different, separate project's bug
+  report, not evidence of a bug in that project's own logic.)
+- **A second, smaller discrepancy**: the CLI's TSV output has a
+  `level\tpage_num\t...` header row; `TessBaseAPIGetTsvText` (what
+  `image-to-tsv` calls) does not include one. Not fixed here — this is
+  a real difference between the CLI's own `TsvRenderer` and the raw
+  `GetTsvText` API call, not a bug in either; documented so a future
+  caller comparing the two doesn't waste time on it the way this pass
+  did initially. (`cl-ocr` works around it on its own side, by
+  prepending the header line itself before writing the cached `.tsv`
+  file — see that project's own docs.)
+
+**Fix**: all five `image-to-*` functions gained a `:psm` keyword
+argument, defaulting to `:psm-auto` (CLI parity), threaded through the
+shared `run-ocr` helper via a new required parameter — `run-ocr` now
+calls `TessBaseAPISetPageSegMode` between `init-tess-api` and
+`process-pages`. Purely additive at the call sites: every existing
+`image-to-*` call with no `:psm` argument now behaves like the CLI tool
+by default instead of like raw `TessBaseAPIInit3`, which is a *behavior*
+change (recognized text/layout can differ on multi-block images) even
+though it required no *signature* change for existing callers.
+
+**Verified against real data, not just the regression suite**: reran
+`image-to-tsv` on the book's title page after the fix and diffed against
+the CLI tool's own TSV output for the same PNG — byte-identical except
+for the header row (the second discrepancy above, deliberately not
+patched around at this layer). 3 new checks added to
+`tests/test-cl-tesseract.lisp` (22 total, up from 19): the raw
+`TessBaseAPIInit3` default really is `:psm-single-block` right now (a
+guard against libtesseract silently changing that default in some
+future version, which would make the explicit `:psm-auto` call
+redundant rather than load-bearing and this whole fix worth
+re-examining), that explicitly setting `:psm-auto` actually moves it
+away from that default, and that the `:psm` keyword genuinely reaches
+the C call through `image-to-tsv` — the last of these had to be checked
+via `TessBaseAPIGetPageSegMode` from inside a custom `run-ocr` extractor
+rather than by comparing recognized output, since the committed
+`hello-tesseract.png` fixture (one short line of text) turned out not to
+produce visibly different output between segmentation modes, unlike the
+real book page that surfaced this bug in the first place.
+
 ## Reference: the full C-to-Lisp binding surface
 
 Every function in `capi.lisp` binds 1:1 to the correspondingly-named C
@@ -297,5 +372,13 @@ the header's own section structure.
 
 ## Consumers
 
-None yet — added and modernized standalone, ahead of any concrete
-consumer.
+**`cl-ocr`** (in the sibling `asiteg/` checkout) — a full-book OCR
+pipeline that runs Tesseract over every page of a source PDF and
+caches the results under `$XDG_CACHE_HOME/cl-ocr/`. Uses `image-to-tsv`/
+`image-to-text` (and, as new output formats are added, potentially
+`image-to-hocr`/`-alto`/`-page` for font-styling information beyond
+what TSV carries) from multiple threads at once — each call creates and
+tears down its own `TessBaseAPI` (see "`run-ocr`'s design" in Known
+gotchas below), which is Tesseract's own recommended pattern for
+multi-threaded use, so no changes were needed here to support that.
+Surfaced the 2026-07-28 `:psm` fix above.

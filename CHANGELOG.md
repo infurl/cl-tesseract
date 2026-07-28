@@ -4,6 +4,33 @@ All notable changes to cl-tesseract, in reverse-chronological order.
 There's no version-number scheme for this project, so entries are dated
 instead.
 
+## 2026-07-28
+
+Found while wiring up the first real consumer (`cl-ocr`, an OCR pipeline
+for full-length book PDFs — see MAINTENANCE.md's "Consumers"):
+
+* **Fixed a real, silent segmentation-mode mismatch against the
+  `tesseract` CLI tool.** `TessBaseAPIInit3` defaults `page_seg_mode` to
+  `PSM_SINGLE_BLOCK` (confirmed via `TessBaseAPIGetPageSegMode`
+  immediately after init, no other calls in between) — but the
+  `tesseract` CLI tool explicitly sets `PSM_AUTO` before OCR unless its
+  own `--psm` flag overrides it. None of the five `image-to-*`
+  convenience functions ever called `TessBaseAPISetPageSegMode`, so they
+  silently inherited single-block mode: not a crash, geometrically wrong
+  output — confirmed directly against a real book's title page, whose
+  CLI-tool TSV output correctly separates title/author into distinct
+  blocks while the unset-PSM API output merged the entire page into one
+  oversized block. All five `image-to-*` functions gained a `:psm`
+  keyword, defaulting to `:psm-auto` (CLI parity), threaded through the
+  shared `run-ocr` helper. Additive, not breaking — existing call sites
+  need no changes. 3 new regression checks (22 total): the raw
+  `TessBaseAPIInit3` default really is `:psm-single-block` (a guard in
+  case libtesseract itself changes that default in a future version,
+  which would make the explicit `:psm-auto` call redundant rather than
+  load-bearing), that setting `:psm-auto` explicitly actually moves it
+  away from that default, and that the `:psm` keyword genuinely reaches
+  the C call through `image-to-tsv`.
+
 ## 2026-07-27
 
 Prompted by real reviewer feedback after the 2026-07-26 release (see
