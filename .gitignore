@@ -1,3 +1,5 @@
 *.FASL
 *.fasl
 *.lisp-temp
+core
+core.[0-9]*
