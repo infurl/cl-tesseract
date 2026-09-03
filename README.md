@@ -87,7 +87,7 @@ files (see Reference below).
 own local Tesseract install (no mocks, no CI):
 
 ```lisp
-(asdf:test-op :cl-tesseract)
+(asdf:test-system :cl-tesseract)
 ```
 
 ## Reference
